@@ -1,0 +1,20 @@
+{
+  "name": "perfect360-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Perfect360 - Store Inventory & Sales Portal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test.js"
+  },
+  "keywords": ["inventory", "sales", "retail", "kirana", "express", "node"],
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/genai": "^2.30.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0"
+  }
+}
