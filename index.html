@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perfect360 - Store Inventory & Sales Portal (All-in-One)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 & Babel for standalone browser execution -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons (optional, not heavily used) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Tesseract OCR engine -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 1. LOCAL DATABASE & STORAGE ENGINE ---
+    const STORAGE_KEY = 'PERFECT360_WEB_DB';
+
+    const defaultDatabase = {
+      settings: {
+        storeName: "Shree Ganesh Kirana Store",
+        ownerName: "Team MindSpark",
+      },
+      language: 'en',
+      products: [
+        { id: "amul-milk", name: "Amul Milk 1L", category: "Dairy", quantity: 12, buyingPrice: 45, sellingPrice: 52, mfgDate: "2026-09-08", expiryDate: "2026-09-13", batch: "AM-203", checked: false },
+        { id: "britannia-bread", name: "Britannia Bread", category: "Bakery", quantity: 4, buyingPrice: 28, sellingPrice: 35, mfgDate: "2026-09-09", expiryDate: "2026-09-14", batch: "BR-881", checked: false },
+        { id: "yogurt-cup", name: "Yogurt Cup", category: "Dairy", quantity: 0, buyingPrice: 18, sellingPrice: 25, mfgDate: "2026-09-07", expiryDate: "2026-09-15", batch: "YG-109", checked: false },
+        { id: "tata-salt", name: "Tata Salt 1kg", category: "Grocery", quantity: 25, buyingPrice: 24, sellingPrice: 28, mfgDate: "2026-08-01", expiryDate: "2027-08-01", batch: "TS-504", checked: false },
+        { id: "fortune-oil", name: "Fortune Sunflower Oil 1L", category: "Grocery", quantity: 9, buyingPrice: 132, sellingPrice: 155, mfgDate: "2026-08-15", expiryDate: "2027-02-15", batch: "FO-920", checked: false }
+      ],
+      sales: [
+        { id: "sale-1", date: new Date().toISOString().slice(0, 10), product: "Amul Milk 1L", buying: 45, selling: 52, quantity: 3, profit: 21 },
+        { id: "sale-2", date: new Date().toISOString().slice(0, 10), product: "Britannia Bread", buying: 28, selling: 35, quantity: 2, profit: 14 }
+      ],
+      suppliers: [
+        { id: "sup-1", agency: "Amul Logistics Pune", contact: "9820011223", category: "Dairy", items: "Amul Milk (50L), Butter (10kg)" },
+        { id: "sup-2", agency: "Britannia Distributors", contact: "9876543210", category: "Bakery", items: "Britannia Bread (30 loaves), Milk Rusk" }
+      ]
+    };
+
+    function loadDatabase() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return structuredClone(defaultDatabase);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.products)) {
+          parsed.products = parsed.products.map(p => ({
+            ...p,
+            sellingPrice: (!isNaN(p.sellingPrice) && p.sellingPrice > 0)
+              ? p.sellingPrice
+              : Math.round((p.buyingPrice || 0) * 1.2 || 30)
+          }));
+        }
+        return { ...structuredClone(defaultDatabase), ...parsed };
+      } catch (e) {
+        return structuredClone(defaultDatabase);
+      }
+    }
+
+    function saveDatabase(db) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      } catch (e) {}
+    }
+
+    // --- 2. 3-LANGUAGE TRANSLATIONS (EN, MR, HI) ---
+    const translations = {
+      en: {
+        storeTitleSub: "Perfect360 Inventory",
+        navDashboard: "Dashboard",
+        navScanner: "Scanner / Add Stock",
+        navStock: "Manage Stock",
+        navSuppliers: "Suppliers",
+        navExpiry: "Expiring Items",
+        navReports: "Profit & Loss",
+        navSettings: "Settings",
+        navAssistant: "AI Store Assistant",
+        langSelectLabel: "Language",
+        storeAdmin: "Store Admin",
+        recordDailySale: "Record Daily Sale",
+        recordSaleSub: "Select a product and the selling price automatically autofills from stock.",
+        productName: "Product Name",
+        productNamePlaceholder: "Select or type item...",
+        sellingPriceLabel: "Selling Price (₹)",
+        sellingPriceAutofillHint: "Autofilled from stock (editable)",
+        quantityLabel: "Quantity",
+        recordSaleBtn: "Record Sale",
+        saleRecordedSuccess: "Sale recorded successfully.",
+        productNotFound: "Product not found. Please add it to inventory first.",
+        netProfitMsg: "Net profit: ",
+        insufficientStock: "Insufficient stock. Available: ",
+        totalProductsStat: "Total Products",
+        expiringSoonStat: "Expiring Soon",
+        outOfStockStat: "Out of Stock",
+        totalStockUnitsStat: "Total Stock Units",
+        quickNavigation: "Quick Navigation",
+        expiryAlerts: "Expiry Alerts",
+        manageAll: "Manage All",
+        noPendingAlerts: "No pending expiry alerts",
+        daysLeft: "days left",
+        expired: "Expired",
+        qAddProduct: "📷 Add Product / Scan",
+        qManageStock: "📦 Manage Stock",
+        qSupplierPortal: "🚚 Supplier Portal",
+        qViewReports: "📊 View Reports & Profit",
+        scannerHeading: "Product Label Scanner",
+        scannerSub: "Scan manufacturing and expiry dates directly using your camera or upload photo.",
+        camOffMsg: "Camera is currently inactive",
+        startCamera: "Start Camera",
+        scanLabel: "Scan Label Text",
+        stopCamera: "Stop Camera",
+        camNoticeDefault: "Point camera at packaging label and click 'Scan Label Text'.",
+        camNoticeActive: "Camera active. Hold label steady and click 'Scan'.",
+        camNoticeSuccess: "Label text extracted successfully. Please verify fields.",
+        camNoticeError: "Could not access camera. Try uploading photo or use manual entry.",
+        uploadLabelImage: "Upload Label Image",
+        addOrInwardStock: "Add or Inward Stock",
+        addStockSub: "Enter stock units. New items require Buying Price and Selling Price.",
+        mfgDate: "MFG Date",
+        expiryDate: "Expiry Date",
+        category: "Category",
+        buyingPriceLabel: "Buying Price (₹)",
+        sellingPriceNewItem: "Selling Price (₹)",
+        qtyToInward: "Quantity to Inward",
+        updateStockBtn: "Update Stock",
+        stockSavedNotice: "Stock saved successfully: ",
+        buyPriceRequired: "Buying price is required for a new product.",
+        sellPriceRequired: "Selling price is required for a new product.",
+        manageStockHeading: "Manage Current Stock",
+        manageStockSub: "Items with ≤5 units are marked Low Stock; 0 units are Out of Stock.",
+        searchStockPlaceholder: "Search product or category...",
+        inStockStatus: "In Stock",
+        lowStockStatus: "Low Stock",
+        outOfStockStatus: "Out of Stock",
+        noMatchingStock: "No matching products found",
+        logInwardDelivery: "Log Inward Delivery",
+        agencyName: "Agency Name",
+        contactNumber: "Contact Number",
+        itemsSupplied: "Items Supplied",
+        itemsSuppliedPlaceholder: "e.g. Milk (50L), Cheese (10kg)",
+        saveDeliveryBtn: "Save Delivery",
+        agencyDeliveriesLog: "Agency Deliveries Log",
+        noDeliveriesYet: "No deliveries logged yet",
+        deleteBtn: "Delete",
+        expiryManagementHeading: "Expiry Management",
+        expiryManagementSub: "Perishable batches expiring within 10 days. Click 'Mark check' to verify and clear the alert.",
+        markCheckBtn: "Mark check",
+        checkedBadge: "✓ Checked",
+        noExpiringProducts: "No products expiring soon",
+        todayRevenue: "Today's Revenue",
+        todayProfit: "Today's Profit",
+        monthlyRevenue: "Monthly Revenue",
+        monthlyProfit: "Monthly Profit",
+        salesProfitHistory: "Sales & Profit History",
+        salesHistorySub: "Calculated using: (Selling Price − Saved Buying Price) × Quantity.",
+        noSalesRecorded: "No sales recorded yet",
+        buyingCol: "Buying (₹)",
+        sellingCol: "Selling (₹)",
+        qtyCol: "Quantity",
+        netProfitCol: "Net Profit",
+        dateCol: "Date",
+        storeProfileSettings: "Store Profile Settings",
+        storeAdminLabel: "Store Administrator",
+        storeNameLabel: "Store Name",
+        saveProfileBtn: "Save Profile",
+        settingsSavedNotice: "Settings saved successfully.",
+        catDairy: "Dairy",
+        catBakery: "Bakery",
+        catBeverages: "Beverages",
+        catProduce: "Produce",
+        catGrocery: "Grocery",
+        catPersonalCare: "Personal Care",
+        botTitle: "Perfect360 AI Assistant",
+        botSubtitle: "Ask anything about inventory, sales, autofill & profits",
+        botPlaceholder: "Type your question here...",
+        botWelcome: "Hello! I am your Perfect360 assistant. Ask me how to use the dashboard, selling price autofill, expiry alerts, stock management, or profit reports!",
+        followUpPrompt: "Related follow-up questions:",
+        thinking: "Thinking...",
+        clearChat: "Clear",
+        pleaseCheckInputs: "Please check inputs"
+      },
+      mr: {
+        storeTitleSub: "परफेक्ट३६० इन्व्हेंटरी",
+        navDashboard: "डॅशबोर्ड",
+        navScanner: "स्कॅनर / स्टॉक जोडा",
+        navStock: "स्टॉक व्यवस्थापन",
+        navSuppliers: "सप्लायर्स (पुरवठादार)",
+        navExpiry: "मुदत संपणारे पदार्थ",
+        navReports: "नफा आणि तोटा",
+        navSettings: "सेटिंग्ज",
+        navAssistant: "एआय सहाय्यक",
+        langSelectLabel: "भाषा",
+        storeAdmin: "दुकान व्यवस्थापक",
+        recordDailySale: "दैनिक विक्री नोंदवा",
+        recordSaleSub: "उत्पादन निवडताच त्याची विक्री किंमत आपोआप (Autofill) भरली जाईल.",
+        productName: "उत्पादनाचे नाव",
+        productNamePlaceholder: "उत्पादन निवडा किंवा टाईप करा...",
+        sellingPriceLabel: "विक्री किंमत (₹)",
+        sellingPriceAutofillHint: "स्टॉकमधून आपोआप भरली (बदलू शकता)",
+        quantityLabel: "संख्या (नग)",
+        recordSaleBtn: "विक्री नोंदवा",
+        saleRecordedSuccess: "विक्री यशस्वीरीत्या नोंदवली गेली.",
+        productNotFound: "उत्पादन सापडले नाही. कृपया आधी स्टॉकमध्ये जोडा.",
+        netProfitMsg: "निव्वळ नफा: ",
+        insufficientStock: "अपुरा स्टॉक! उपलब्ध शिल्लक: ",
+        totalProductsStat: "एकूण उत्पादने",
+        expiringSoonStat: "मुदत संपत आलेली",
+        outOfStockStat: "स्टॉक संपला (Out of Stock)",
+        totalStockUnitsStat: "एकूण उपलब्ध नग",
+        quickNavigation: "जलद नेव्हिगेशन",
+        expiryAlerts: "मुदत संपण्याचा इशारा",
+        manageAll: "सर्व पाहा",
+        noPendingAlerts: "कोणताही मुदत संपणारा इशारा प्रलंबित नाही",
+        daysLeft: "दिवस शिल्लक",
+        expired: "मुदत संपली",
+        qAddProduct: "📷 उत्पादन जोडा / स्कॅन करा",
+        qManageStock: "📦 स्टॉक व्यवस्थापन",
+        qSupplierPortal: "🚚 सप्लायर पोर्टल",
+        qViewReports: "📊 नफा व अहवाल पाहा",
+        scannerHeading: "उत्पादन लेबल स्कॅनर",
+        scannerSub: "कॅमेरा किंवा फोटो वापरून उत्पादन व एक्सपायरी तारीख थेट स्कॅन करा.",
+        camOffMsg: "कॅमेरा सध्या बंद आहे",
+        startCamera: "कॅमेरा सुरू करा",
+        scanLabel: "लेबल मजकूर स्कॅन करा",
+        stopCamera: "कॅमेरा बंद करा",
+        camNoticeDefault: "कॅमेरा पॅकेटच्या लेबलवर धरा आणि 'लेबल मजकूर स्कॅन करा' दाबा.",
+        camNoticeActive: "कॅमेरा सुरू आहे. लेबल स्थिर ठेवा आणि स्कॅन दाबा.",
+        camNoticeSuccess: "मजकूर यशस्वीरित्या स्कॅन केला गेला. कृपया माहिती तपासा.",
+        camNoticeError: "कॅमेरा सुरू करता आला नाही. मॅन्युअल नोंद करा किंवा फोटो अपलोड करा.",
+        uploadLabelImage: "लेबल फोटो अपलोड करा",
+        addOrInwardStock: "स्टॉक जोडा / माल आणा",
+        addStockSub: "स्टॉक नोंदवा. नवीन उत्पादनासाठी खरेदी किंमत व विक्री किंमत आवश्यक आहे.",
+        mfgDate: "उत्पादन तारीख (MFG)",
+        expiryDate: "मुदत संपण्याची तारीख (EXP)",
+        category: "प्रवर्ग",
+        buyingPriceLabel: "खरेदी किंमत (₹)",
+        sellingPriceNewItem: "विक्री किंमत (₹)",
+        qtyToInward: "आणलेली संख्या (Qty)",
+        updateStockBtn: "स्टॉक अद्ययावत करा",
+        stockSavedNotice: "स्टॉक यशस्वीरीत्या जतन केला: ",
+        buyPriceRequired: "नवीन उत्पादनासाठी खरेदी किंमत आवश्यक आहे.",
+        sellPriceRequired: "नवीन उत्पादनासाठी विक्री किंमत आवश्यक आहे.",
+        manageStockHeading: "सद्य स्टॉक व्यवस्थापन",
+        manageStockSub: "≤५ नग असलेले पदार्थ 'कमी स्टॉक' आणि ० नग असलेले 'स्टॉक संपला' दर्शविले जातात.",
+        searchStockPlaceholder: "उत्पादन किंवा प्रवर्ग शोधा...",
+        inStockStatus: "स्टॉकमध्ये उपलब्ध",
+        lowStockStatus: "कमी स्टॉक",
+        outOfStockStatus: "स्टॉक संपला",
+        noMatchingStock: "कोणतेही उत्पादन सापडले नाही",
+        logInwardDelivery: "सप्लायरकडून आलेला माल नोंदवा",
+        agencyName: "एजन्सीचे नाव",
+        contactNumber: "संपर्क क्रमांक",
+        itemsSupplied: "पुरवठा केलेल्या वस्तू",
+        itemsSuppliedPlaceholder: "उदा. दूध (५०L), बटर (१० किलो)",
+        saveDeliveryBtn: "डिलिव्हरी जतन करा",
+        agencyDeliveriesLog: "सप्लायर डिलिव्हरी नोंदवही",
+        noDeliveriesYet: "अजून कोणतीही डिलिव्हरी नोंदवलेली नाही",
+        deleteBtn: "हटवा",
+        expiryManagementHeading: "मुदत संपणारे पदार्थ व्यवस्थापन",
+        expiryManagementSub: "पुढील १० दिवसांत मुदत संपणारा माल. तपासणी पूर्ण झाल्यावर 'तपासले' दाबा.",
+        markCheckBtn: "तपासले (Mark check)",
+        checkedBadge: "✓ तपासले",
+        noExpiringProducts: "लवकर मुदत संपणारे कोणतेही उत्पादन नाही",
+        todayRevenue: "आजचा एकूण गल्ला",
+        todayProfit: "आजचा निव्वळ नफा",
+        monthlyRevenue: "चालू महिन्याचा महसूल",
+        monthlyProfit: "चालू महिन्याचा नफा",
+        salesProfitHistory: "विक्री आणि नफा इतिहास",
+        salesHistorySub: "हिशोब सूत्र: (विक्री किंमत − खरेदी किंमत) × संख्या.",
+        noSalesRecorded: "अद्याप कोणतीही विक्री नोंदवलेली नाही",
+        buyingCol: "खरेदी (₹)",
+        sellingCol: "विक्री (₹)",
+        qtyCol: "संख्या",
+        netProfitCol: "निव्वळ नफा",
+        dateCol: "दिनांक",
+        storeProfileSettings: "दुकान प्रोफाइल सेटिंग्ज",
+        storeAdminLabel: "दुकान व्यवस्थापक / मालक",
+        storeNameLabel: "दुकानाचे नाव",
+        saveProfileBtn: "प्रोफाइल जतन करा",
+        settingsSavedNotice: "सेटिंग्ज यशस्वीरीत्या जतन केल्या.",
+        catDairy: "दुग्धजन्य",
+        catBakery: "बेकरी उत्पादने",
+        catBeverages: "पेये व शीतपेये",
+        catProduce: "भाजीपाला व फळे",
+        catGrocery: "किराणा माल",
+        catPersonalCare: "वैयक्तिक काळजी",
+        botTitle: "Perfect360 एआय सहाय्यक",
+        botSubtitle: "इन्व्हेंटरी, विक्री किंमत ऑटोफिल व नफ्याबाबत काहीही विचारा",
+        botPlaceholder: "येथे तुमचा प्रश्न विचारा...",
+        botWelcome: "नमस्कार! मी तुमचा Perfect360 सहाय्यक आहे. विक्री किंमत ऑटोफिल, नफा मोजणी, एक्सपायरी अलर्ट किंवा स्टॉक व्यवस्थापनाबाबत विचारा!",
+        followUpPrompt: "पुढील संबंधित प्रश्न:",
+        thinking: "विचार करत आहे...",
+        clearChat: "पुसा",
+        pleaseCheckInputs: "कृपया इनपुट तपासा"
+      },
+      hi: {
+        storeTitleSub: "परफेक्ट360 इन्वेंटरी",
+        navDashboard: "डैशबोर्ड",
+        navScanner: "स्कैनर / स्टॉक जोड़ें",
+        navStock: "स्टॉक प्रबंधन",
+        navSuppliers: "सप्लायर्स",
+        navExpiry: "एक्सपायर होने वाले उत्पाद",
+        navReports: "लाभ और हानि",
+        navSettings: "सेटिंग्स",
+        navAssistant: "एआई सहायक",
+        langSelectLabel: "भाषा",
+        storeAdmin: "स्टोर व्यवस्थापक",
+        recordDailySale: "दैनिक बिक्री दर्ज करें",
+        recordSaleSub: "उत्पाद चुनते ही उसकी तय बिक्री मूल्य अपने आप (Autofill) भर जाएगी।",
+        productName: "उत्पाद का नाम",
+        productNamePlaceholder: "उत्पाद चुनें या लिखें...",
+        sellingPriceLabel: "बिक्री मूल्य (₹)",
+        sellingPriceAutofillHint: "स्टॉक से स्वतः भरा गया (बदल सकते हैं)",
+        quantityLabel: "मात्रा",
+        recordSaleBtn: "बिक्री दर्ज करें",
+        saleRecordedSuccess: "बिक्री सफलतापूर्वक दर्ज की गई।",
+        productNotFound: "उत्पाद नहीं मिला। कृपया पहले इन्वेंटरी में जोड़ें।",
+        netProfitMsg: "शुद्ध लाभ: ",
+        insufficientStock: "अपर्याप्त स्टॉक! उपलब्ध मात्रा: ",
+        totalProductsStat: "कुल उत्पाद",
+        expiringSoonStat: "जल्द एक्सपायर होने वाले",
+        outOfStockStat: "स्टॉक समाप्त (Out of Stock)",
+        totalStockUnitsStat: "कुल उपलब्ध स्टॉक इकाइयाँ",
+        quickNavigation: "त्वरित नेविगेशन",
+        expiryAlerts: "एक्सपायरी अलर्ट",
+        manageAll: "सभी देखें",
+        noPendingAlerts: "कोई लंबित एक्सपायरी अलर्ट नहीं है",
+        daysLeft: "दिन शेष",
+        expired: "एक्सपायर हो चुका",
+        qAddProduct: "📷 उत्पाद जोड़ें / स्कैन करें",
+        qManageStock: "📦 स्टॉक प्रबंधन",
+        qSupplierPortal: "🚚 सप्लायर पोर्टल",
+        qViewReports: "📊 रिपोर्ट और लाभ देखें",
+        scannerHeading: "उत्पाद लेबल स्कैनर",
+        scannerSub: "कैमरा या फोटो से निर्माण और एक्सपायरी तिथि सीधे स्कैन करें।",
+        camOffMsg: "कैमरा वर्तमान में बंद है",
+        startCamera: "कैमरा शुरू करें",
+        scanLabel: "लेबल टेक्स्ट स्कैन करें",
+        stopCamera: "कैमरा बंद करें",
+        camNoticeDefault: "कैमरा पैकेजिंग लेबल पर रखें और 'लेबल टेक्स्ट स्कैन करें' दबाएं।",
+        camNoticeActive: "कैमरा सक्रिय है। लेबल को स्थिर रखें और स्कैन करें।",
+        camNoticeSuccess: "लेबल की जानकारी सफलतापूर्वक प्राप्त हुई। कृपया विवरण जांचें।",
+        camNoticeError: "कैमरा नहीं खुल सका। फोटो अपलोड करें या मैनुअल प्रविष्टि करें।",
+        uploadLabelImage: "लेबल फोटो अपलोड करें",
+        addOrInwardStock: "स्टॉक जोड़ें / माल प्राप्त करें",
+        addStockSub: "स्टॉक दर्ज करें। नए उत्पाद के लिए खरीद मूल्य और बिक्री मूल्य अनिवार्य है।",
+        mfgDate: "निर्माण तिथि (MFG)",
+        expiryDate: "एक्सपायरी तिथि (EXP)",
+        category: "श्रेणी",
+        buyingPriceLabel: "खरीद मूल्य (₹)",
+        sellingPriceNewItem: "बिक्री मूल्य (₹)",
+        qtyToInward: "प्राप्त मात्रा (Qty)",
+        updateStockBtn: "स्टॉक अपडेट करें",
+        stockSavedNotice: "स्टॉक सफलतापूर्वक सहेजा गया: ",
+        buyPriceRequired: "नए उत्पाद के लिए खरीद मूल्य आवश्यक है।",
+        sellPriceRequired: "नए उत्पाद के लिए बिक्री मूल्य आवश्यक है।",
+        manageStockHeading: "वर्तमान स्टॉक प्रबंधन",
+        manageStockSub: "≤5 इकाइयों वाले उत्पाद 'कम स्टॉक' और 0 इकाइयाँ 'स्टॉक समाप्त' चिह्नित होती हैं।",
+        searchStockPlaceholder: "उत्पाद या श्रेणी खोजें...",
+        inStockStatus: "स्टॉक में उपलब्ध",
+        lowStockStatus: "कम स्टॉक",
+        outOfStockStatus: "स्टॉक समाप्त",
+        noMatchingStock: "कोई उत्पाद नहीं मिला",
+        logInwardDelivery: "सप्लायर डिलीवरी दर्ज करें",
+        agencyName: "एजेंसी का नाम",
+        contactNumber: "संपर्क नंबर",
+        itemsSupplied: "आपूर्ति की गई वस्तुएं",
+        itemsSuppliedPlaceholder: "जैसे: अमूल दूध (50L), पनीर (10 किग्रा)",
+        saveDeliveryBtn: "डिलीवरी सहेजें",
+        agencyDeliveriesLog: "सप्लायर डिलीवरी लॉग",
+        noDeliveriesYet: "अभी तक कोई डिलीवरी दर्ज नहीं की गई है",
+        deleteBtn: "हटाएं",
+        expiryManagementHeading: "एक्सपायरी प्रबंधन",
+        expiryManagementSub: "अगले 10 दिनों में एक्सपायर होने वाला माल। जांच पूरी होने पर 'मार्क चेक' दबाएं।",
+        markCheckBtn: "मार्क चेक (Mark check)",
+        checkedBadge: "✓ जाँचा गया",
+        noExpiringProducts: "जल्द एक्सपायर होने वाला कोई उत्पाद नहीं है",
+        todayRevenue: "आज का कुल राजस्व",
+        todayProfit: "आज का शुद्ध लाभ",
+        monthlyRevenue: "मासिक राजस्व",
+        monthlyProfit: "मासिक लाभ",
+        salesProfitHistory: "बिक्री और लाभ का इतिहास",
+        salesHistorySub: "गणना सूत्र: (बिक्री मूल्य − खरीद मूल्य) × मात्रा।",
+        noSalesRecorded: "अभी तक कोई बिक्री दर्ज नहीं की गई है",
+        buyingCol: "खरीद (₹)",
+        sellingCol: "बिक्री (₹)",
+        qtyCol: "मात्रा",
+        netProfitCol: "शुद्ध लाभ",
+        dateCol: "दिनांक",
+        storeProfileSettings: "स्टोर प्रोफ़ाइल सेटिंग्स",
+        storeAdminLabel: "स्टोर प्रशासक / स्वामी",
+        storeNameLabel: "स्टोर का नाम",
+        saveProfileBtn: "प्रोफ़ाइल सहेजें",
+        settingsSavedNotice: "सेटिंग्स सफलतापूर्वक सहेजी गईं।",
+        catDairy: "डेयरी उत्पाद",
+        catBakery: "बेकरी",
+        catBeverages: "पेय पदार्थ",
+        catProduce: "फल और सब्जियां",
+        catGrocery: "किराना सामान",
+        catPersonalCare: "पर्सनल केयर",
+        botTitle: "Perfect360 एआई सहायक",
+        botSubtitle: "इन्वेंटरी, बिक्री मूल्य ऑटोफिल व मुनाफे से जुड़े सवाल पूछें",
+        botPlaceholder: "अपना सवाल यहाँ लिखें...",
+        botWelcome: "नमस्ते! मैं आपका Perfect360 सहायक हूँ। बिक्री मूल्य ऑटोफिल, लाभ गणना, एक्सपायरी अलर्ट या स्टॉक प्रबंधन के बारे में पूछें!",
+        followUpPrompt: "संबंधित अगले सवाल:",
+        thinking: "सोच रहा हूँ...",
+        clearChat: "मिटाएं",
+        pleaseCheckInputs: "कृपया इनपुट जांचें"
+      }
+    };
+
+    // --- 3. MAIN COMPONENT ---
+    function Perfect360App() {
+      const [db, setDb] = useState(() => loadDatabase());
+      const [currentTab, setCurrentTab] = useState('dashboard');
+      const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+
+      // Optional: try to fetch from backend if available
+      useEffect(() => {
+        fetch('/api/db')
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.products) setDb(data);
+          })
+          .catch(() => {});
+      }, []);
+
+      useEffect(() => {
+        saveDatabase(db);
+      }, [db]);
+
+      const lang = db.language || 'en';
+      const t = translations[lang] || translations.en;
+
+      const handleSelectLanguage = (newLang) => {
+        fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: newLang })
+        }).catch(() => {});
+        setDb(prev => ({ ...prev, language: newLang }));
+      };
+
+      // Sale handler with automatic selling price & net profit
+      const handleRecordSale = (productName, sellingPrice, quantity) => {
+        fetch('/api/sales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productName, sellingPrice, quantity })
+        }).catch(() => {});
+
+        const prod = db.products.find(p => p.name.trim().toLowerCase() === productName.trim().toLowerCase());
+        if (!prod) return { success: false, message: t.productNotFound };
+        if (prod.quantity < quantity) return { success: false, message: t.insufficientStock + prod.quantity };
+
+        const profit = (sellingPrice - prod.buyingPrice) * quantity;
+        const newSale = {
+          id: 'sale-' + Date.now(),
+          date: new Date().toISOString().slice(0, 10),
+          product: prod.name,
+          buying: prod.buyingPrice,
+          selling: sellingPrice,
+          quantity,
+          profit
+        };
+
+        setDb(prev => ({
+          ...prev,
+          products: prev.products.map(p => p.id === prod.id ? { ...p, quantity: Math.max(0, p.quantity - quantity) } : p),
+          sales: [newSale, ...prev.sales]
+        }));
+
+        return { success: true, message: t.saleRecordedSuccess + ' ' + t.netProfitMsg + '₹' + profit.toFixed(2), profit };
+      };
+
+      // Stock Inward handler
+      const handleSaveStock = (stockData) => {
+        fetch('/api/products/inward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(stockData)
+        }).catch(() => {});
+
+        const existing = db.products.find(p => p.name.trim().toLowerCase() === stockData.name.trim().toLowerCase());
+        if (existing) {
+          setDb(prev => ({
+            ...prev,
+            products: prev.products.map(p => p.id === existing.id ? {
+              ...p,
+              quantity: p.quantity + stockData.quantity,
+              category: stockData.category || p.category,
+              mfgDate: stockData.mfgDate || p.mfgDate,
+              expiryDate: stockData.expiryDate || p.expiryDate,
+              buyingPrice: stockData.buyingPrice !== undefined ? stockData.buyingPrice : p.buyingPrice,
+              sellingPrice: stockData.sellingPrice !== undefined ? stockData.sellingPrice : p.sellingPrice,
+              checked: false
+            } : p)
+          }));
+          return { success: true, message: t.stockSavedNotice + ' +' + stockData.quantity + ' units of ' + stockData.name };
+        } else {
+          if (stockData.buyingPrice === undefined || stockData.sellingPrice === undefined || isNaN(stockData.buyingPrice) || isNaN(stockData.sellingPrice)) {
+            return { success: false, message: t.buyPriceRequired + ' & ' + t.sellPriceRequired };
+          }
+          const newProduct = {
+            id: 'prod-' + Date.now(),
+            name: stockData.name,
+            category: stockData.category,
+            quantity: stockData.quantity,
+            buyingPrice: stockData.buyingPrice,
+            sellingPrice: stockData.sellingPrice,
+            mfgDate: stockData.mfgDate,
+            expiryDate: stockData.expiryDate,
+            batch: 'B-' + Math.floor(100 + Math.random() * 900),
+            checked: false
+          };
+          setDb(prev => ({ ...prev, products: [newProduct, ...prev.products] }));
+          return { success: true, message: t.stockSavedNotice + newProduct.name + ' (' + stockData.quantity + ' units)' };
+        }
+      };
+
+      // Mark expiry check
+      const handleMarkCheck = (id) => {
+        fetch('/api/products/' + id + '/check', { method: 'PATCH' }).catch(() => {});
+        setDb(prev => ({
+          ...prev,
+          products: prev.products.map(p => p.id === id ? { ...p, checked: true } : p)
+        }));
+      };
+
+      // Suppliers
+      const handleAddSupplier = (sup) => {
+        fetch('/api/suppliers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sup)
+        }).catch(() => {});
+
+        setDb(prev => ({
+          ...prev,
+          suppliers: [{ id: 'sup-' + Date.now(), ...sup }, ...prev.suppliers]
+        }));
+      };
+
+      const handleDeleteSupplier = (id) => {
+        fetch('/api/suppliers/' + id, { method: 'DELETE' }).catch(() => {});
+        setDb(prev => ({
+          ...prev,
+          suppliers: prev.suppliers.filter(s => s.id !== id)
+        }));
+      };
+
+      // Settings
+      const handleSaveSettings = (settings) => {
+        fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        }).catch(() => {});
+        setDb(prev => ({ ...prev, settings }));
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+          {/* TOP NAVBAR */}
+          <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-xs">P</div>
+                <div>
+                  <h1 className="font-bold text-slate-900 text-base leading-tight">{db.settings.storeName || "Shree Ganesh Kirana Store"}</h1>
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{t.storeTitleSub}</span>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <nav className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 text-xs font-semibold">
+                {[
+                  { id: 'dashboard', label: t.navDashboard, icon: '📊' },
+                  { id: 'inventory', label: t.navScanner, icon: '📷' },
+                  { id: 'stock', label: t.navStock, icon: '📦' },
+                  { id: 'suppliers', label: t.navSuppliers, icon: '🚚' },
+                  { id: 'expiry', label: t.navExpiry, icon: '⏰' },
+                  { id: 'reports', label: t.navReports, icon: '📈' },
+                  { id: 'settings', label: t.navSettings, icon: '⚙️' }
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setCurrentTab(item.id)}
+                    className={`px-3 py-2 rounded-lg whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                      currentTab === item.id ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              {/* Language Selector & AI Button */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                  <span className="text-xs mr-1 text-slate-500">🌐</span>
+                  <select
+                    value={lang}
+                    onChange={(e) => handleSelectLanguage(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value="en">English</option>
+                    <option value="mr">मराठी</option>
+                    <option value="hi">हिन्दी</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setIsChatbotOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>✨</span>
+                  <span>{t.navAssistant}</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* MAIN WORKSPACE */}
+          <main className="max-w-7xl w-full mx-auto px-4 py-6 flex-1">
+            {currentTab === 'dashboard' && <DashboardView products={db.products} onRecordSale={handleRecordSale} onNavigateTab={setCurrentTab} t={t} />}
+            {currentTab === 'inventory' && <AddStockView products={db.products} onSaveStock={handleSaveStock} t={t} />}
+            {currentTab === 'stock' && <ManageStockView products={db.products} t={t} />}
+            {currentTab === 'suppliers' && <SuppliersView suppliers={db.suppliers} onAddSupplier={handleAddSupplier} onDeleteSupplier={handleDeleteSupplier} t={t} />}
+            {currentTab === 'expiry' && <ExpiringView products={db.products} onMarkCheck={handleMarkCheck} t={t} />}
+            {currentTab === 'reports' && <ReportsView sales={db.sales} t={t} />}
+            {currentTab === 'settings' && <SettingsView settings={db.settings} onSaveSettings={handleSaveSettings} language={lang} onSelectLanguage={handleSelectLanguage} t={t} />}
+          </main>
+
+          {/* AI CHATBOT MODAL */}
+          {isChatbotOpen && (
+            <ChatbotView
+              isOpen={isChatbotOpen}
+              onClose={() => setIsChatbotOpen(false)}
+              language={lang}
+              products={db.products}
+              sales={db.sales}
+              t={t}
+            />
+          )}
+
+          {/* FLOATING CHAT BUTTON */}
+          <button
+            onClick={() => setIsChatbotOpen(true)}
+            className="fixed bottom-5 right-5 z-30 p-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl hover:shadow-2xl transition cursor-pointer border-2 border-white flex items-center gap-2"
+          >
+            <span className="text-lg">✨</span>
+            <span className="text-xs font-bold hidden sm:inline">{t.botTitle}</span>
+          </button>
+        </div>
+      );
+    }
+
+    // --- 4. SUB-VIEWS ---
+
+    // VIEW A: DASHBOARD
+    function DashboardView({ products, onRecordSale, onNavigateTab, t }) {
+      const [prodName, setProdName] = useState('');
+      const [sellingPrice, setSellingPrice] = useState('');
+      const [quantity, setQuantity] = useState(1);
+      const [notice, setNotice] = useState(null);
+
+      const matched = products.find(p => p.name.trim().toLowerCase() === prodName.trim().toLowerCase());
+
+      useEffect(() => {
+        if (matched) {
+          setSellingPrice(matched.sellingPrice ? String(matched.sellingPrice) : '');
+        }
+      }, [prodName, matched]);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const priceNum = parseFloat(sellingPrice);
+        if (!prodName.trim() || isNaN(priceNum) || priceNum <= 0 || quantity <= 0) {
+          setNotice({ type: 'error', text: t.pleaseCheckInputs || 'Please check inputs' });
+          return;
+        }
+        const res = onRecordSale(prodName.trim(), priceNum, quantity);
+        if (res.success) {
+          setNotice({ type: 'success', text: res.message });
+          setProdName('');
+          setSellingPrice('');
+          setQuantity(1);
+          setTimeout(() => setNotice(null), 5000);
+        } else {
+          setNotice({ type: 'error', text: res.message });
+        }
+      };
+
+      const totalUnits = products.reduce((acc, p) => acc + (Number(p.quantity) || 0), 0);
+      const outCount = products.filter(p => Number(p.quantity) <= 0).length;
+      const todayTime = new Date().setHours(0, 0, 0, 0);
+      const expiringAlerts = products
+        .map(p => {
+          const exp = new Date(p.expiryDate).getTime();
+          const days = isNaN(exp) ? 999 : Math.ceil((exp - todayTime) / (1000 * 60 * 60 * 24));
+          return { ...p, days };
+        })
+        .filter(p => p.days <= 10 && !p.checked);
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <span>🛍️</span><span>{t.recordDailySale}</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t.recordSaleSub}</p>
+              </div>
+              {products.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold text-slate-400">Quick:</span>
+                  {products.slice(0, 3).map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setProdName(p.name)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-xs text-slate-700 transition cursor-pointer"
+                    >
+                      {p.name} (₹{p.sellingPrice})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-5">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.productName}</label>
+                <input
+                  list="dashProducts"
+                  type="text"
+                  value={prodName}
+                  onChange={(e) => setProdName(e.target.value)}
+                  placeholder={t.productNamePlaceholder}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <datalist id="dashProducts">
+                  {products.map(p => (
+                    <option key={p.id} value={p.name}>Stock: {p.quantity} | Sell: ₹{p.sellingPrice}</option>
+                  ))}
+                </datalist>
+                {matched && (
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                    ✓ Available Stock: {matched.quantity} units | Buying: ₹{matched.buyingPrice}
+                  </p>
+                )}
+              </div>
+
+              <div className="sm:col-span-3">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">{t.sellingPriceLabel}</label>
+                  {matched && <span className="text-[10px] bg-blue-50 text-blue-700 px-1 rounded font-bold">Autofilled</span>}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={sellingPrice}
+                    onChange={(e) => setSellingPrice(e.target.value)}
+                    placeholder="0.00"
+                    required
+                    className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-slate-300 text-sm font-bold focus:border-blue-500 focus:outline-none bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.quantityLabel}</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={matched ? matched.quantity : 9999}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  required
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm font-bold text-center focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <button type="submit" className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition cursor-pointer">
+                  {t.recordSaleBtn}
+                </button>
+              </div>
+            </form>
+
+            {matched && sellingPrice && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-xs">
+                <span className="text-slate-500">Cost: ₹{matched.buyingPrice} × {quantity}</span>
+                <span className="font-bold text-emerald-700">
+                  Calculated Margin: ₹{((parseFloat(sellingPrice || 0) - matched.buyingPrice) * quantity).toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {notice && (
+              <div className={`mt-3 p-2.5 rounded-lg text-xs font-semibold ${notice.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+                {notice.text}
+              </div>
+            )}
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.totalProductsStat}</span>
+              <strong className="text-2xl font-bold text-slate-900 block mt-1">{products.length}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.expiringSoonStat}</span>
+              <strong className="text-2xl font-bold text-amber-600 block mt-1">{expiringAlerts.length}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.outOfStockStat}</span>
+              <strong className="text-2xl font-bold text-rose-600 block mt-1">{outCount}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.totalStockUnitsStat}</span>
+              <strong className="text-2xl font-bold text-slate-900 block mt-1">{totalUnits}</strong>
+            </div>
+          </div>
+
+          {/* Expiry Alerts preview */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                <span>⏰</span><span>{t.expiryAlerts}</span>
+              </h3>
+              <button onClick={() => onNavigateTab('expiry')} className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
+                {t.manageAll} →
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b text-slate-400 uppercase">
+                    <th className="py-2">Product</th>
+                    <th className="py-2">Expiry</th>
+                    <th className="py-2 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {expiringAlerts.length === 0 ? (
+                    <tr><td colSpan={3} className="py-4 text-center text-slate-400">{t.noPendingAlerts}</td></tr>
+                  ) : (
+                    expiringAlerts.slice(0, 4).map(item => (
+                      <tr key={item.id}>
+                        <td className="py-2 font-bold text-slate-900">{item.name}</td>
+                        <td className="py-2 text-slate-500">{item.expiryDate}</td>
+                        <td className="py-2 text-right">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${item.days <= 2 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}`}>
+                            {item.days < 0 ? t.expired : `${item.days} ${t.daysLeft}`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW B: SCANNER / ADD STOCK (LIVE CAMERA + TESSERACT OCR)
+    function AddStockView({ products, onSaveStock, t }) {
+      const [name, setName] = useState('');
+      const [mfgDate, setMfgDate] = useState(new Date().toISOString().slice(0, 10));
+      const [expiryDate, setExpiryDate] = useState('');
+      const [category, setCategory] = useState('Dairy');
+      const [buyingPrice, setBuyingPrice] = useState('');
+      const [sellingPrice, setSellingPrice] = useState('');
+      const [quantity, setQuantity] = useState('10');
+      const [notice, setNotice] = useState(null);
+
+      const [isCameraActive, setIsCameraActive] = useState(false);
+      const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+      const [ocrMessage, setOcrMessage] = useState(t.camNoticeDefault || 'Position label in camera view and tap Scan.');
+      const [scannedBadge, setScannedBadge] = useState(false);
+
+      const videoRef = useRef(null);
+      const mediaStreamRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      const existing = products.find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+      const startCamera = async () => {
+        try {
+          setOcrMessage("Requesting camera access...");
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          mediaStreamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play();
+          }
+          setIsCameraActive(true);
+          setOcrMessage(t.camNoticeActive || 'Camera active. Hold label steady and click Scan.');
+        } catch (err) {
+          setIsCameraActive(false);
+          setOcrMessage(t.camNoticeError || 'Camera unavailable. Please upload an image or type manually.');
+        }
+      };
+
+      const stopCamera = () => {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach(track => track.stop());
+          mediaStreamRef.current = null;
+        }
+        if (videoRef.current) videoRef.current.srcObject = null;
+        setIsCameraActive(false);
+        setOcrMessage(t.camNoticeDefault || 'Position camera at packaging label and click Scan.');
+      };
+
+      const parseOcrText = (rawText) => {
+        const text = (rawText || '').trim();
+        if (!text) {
+          setOcrMessage("No readable text detected. Please try closer with good lighting.");
+          return;
+        }
+
+        const mfgMatch = text.match(/(?:MFG|MFD|MKT|PKG)[:\s.-]*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i);
+        const expMatch = text.match(/(?:EXP|EXPIRY|USE BY|BEST BEFORE)[:\s.-]*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i);
+
+        const formatDateStr = (str) => {
+          const parts = str.replace(/[.-]/g, '/').split('/');
+          if (parts.length === 3) {
+            let [d, m, y] = parts;
+            if (y.length === 2) y = "20" + y;
+            return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+          }
+          return '';
+        };
+
+        if (mfgMatch) {
+          const formatted = formatDateStr(mfgMatch[1]);
+          if (formatted) setMfgDate(formatted);
+        }
+        if (expMatch) {
+          const formatted = formatDateStr(expMatch[1]);
+          if (formatted) setExpiryDate(formatted);
+        }
+
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3 && !/mfg|exp|batch|mrp|rs|pkg|use by|net|wt|ingredient/i.test(l));
+        if (lines.length > 0) {
+          const detectedTitle = lines[0].slice(0, 35);
+          setName(detectedTitle);
+          const matched = products.find(p => p.name.toLowerCase().includes(detectedTitle.toLowerCase()) || detectedTitle.toLowerCase().includes(p.name.toLowerCase()));
+          if (matched) {
+            setCategory(matched.category);
+            setBuyingPrice(String(matched.buyingPrice));
+            setSellingPrice(String(matched.sellingPrice));
+          }
+        }
+
+        setScannedBadge(true);
+        setOcrMessage(t.camNoticeSuccess || 'Scan completed successfully! Review extracted fields.');
+        setNotice({ type: 'success', text: '✓ Scan captured! Details auto-filled below.' });
+      };
+
+      const captureAndOcr = async () => {
+        if (!videoRef.current || !window.Tesseract) return;
+        setIsOcrProcessing(true);
+        setOcrMessage("Reading label & dates with OCR...");
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0);
+          try {
+            const result = await window.Tesseract.recognize(canvas, 'eng');
+            parseOcrText(result.data.text || '');
+          } catch (err) {
+            setOcrMessage("Failed to read text. Please adjust angle or lighting.");
+          }
+        }
+        setIsOcrProcessing(false);
+      };
+
+      const handleFileUpload = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file || !window.Tesseract) return;
+        setIsOcrProcessing(true);
+        setOcrMessage("Analyzing uploaded label image...");
+        try {
+          const result = await window.Tesseract.recognize(file, 'eng');
+          parseOcrText(result.data.text || '');
+        } catch (err) {
+          setOcrMessage("Failed to read image. Please enter manually.");
+        }
+        setIsOcrProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+
+      const handleQuickSampleScan = (sampleName, sampleMfg, sampleExp, sampleCat, sampleBuy, sampleSell) => {
+        setName(sampleName);
+        setMfgDate(sampleMfg);
+        setExpiryDate(sampleExp);
+        setCategory(sampleCat);
+        setBuyingPrice(String(sampleBuy));
+        setSellingPrice(String(sampleSell));
+        setScannedBadge(true);
+        setNotice({ type: 'success', text: `✓ Sample loaded: ${sampleName}` });
+        setOcrMessage(`Sample label detected: ${sampleName} (Exp: ${sampleExp})`);
+      };
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        const bNum = buyingPrice ? parseFloat(buyingPrice) : undefined;
+        const sNum = sellingPrice ? parseFloat(sellingPrice) : undefined;
+        const qNum = parseInt(quantity) || 1;
+
+        if (!existing && (!bNum || !sNum || isNaN(bNum) || isNaN(sNum))) {
+          setNotice({ type: 'error', text: t.buyPriceRequired + ' & ' + t.sellPriceRequired });
+          return;
+        }
+
+        const res = onSaveStock({
+          name: name.trim(),
+          mfgDate,
+          expiryDate,
+          category,
+          buyingPrice: bNum,
+          sellingPrice: sNum,
+          quantity: qNum
+        });
+
+        if (res.success) {
+          setNotice({ type: 'success', text: res.message });
+          setName('');
+          setBuyingPrice('');
+          setSellingPrice('');
+          setQuantity('10');
+          setScannedBadge(false);
+          setTimeout(() => setNotice(null), 5000);
+        } else {
+          setNotice({ type: 'error', text: res.message });
+        }
+      };
+
+      return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <span>📷</span><span>{t.scannerHeading || "Product Label Scanner"}</span>
+                </h2>
+                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider">OCR Engine</span>
+              </div>
+              <p className="text-xs text-slate-500 mb-4">{t.scannerSub}</p>
+
+              <div className="relative w-full h-56 sm:h-64 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center border border-slate-300 shadow-inner">
+                <video ref={videoRef} playsInline muted className={`w-full h-full object-cover ${isCameraActive ? 'block' : 'hidden'}`} />
+                {!isCameraActive && (
+                  <div className="text-center p-4">
+                    <div className="w-10 h-10 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-2 text-lg">📷</div>
+                    <p className="text-xs text-slate-300 font-semibold">{t.camOffMsg || "Camera currently inactive"}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Click 'Start Camera' or upload an image of packaging</p>
+                  </div>
+                )}
+                {isCameraActive && (
+                  <div className="absolute inset-0 pointer-events-none border-2 border-dashed border-blue-400/80 m-6 rounded-lg flex items-center justify-center">
+                    <span className="text-[11px] font-bold text-white bg-black/70 px-2.5 py-1 rounded shadow">Align MFG / EXP Here</span>
+                  </div>
+                )}
+                {isOcrProcessing && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 text-white z-10">
+                    <div className="w-7 h-7 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-xs font-bold tracking-wide">Reading label with Tesseract OCR...</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {!isCameraActive ? (
+                  <button type="button" onClick={startCamera} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer shadow-2xs">
+                    <span>📷</span><span>{t.startCamera || "Start Camera"}</span>
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" onClick={captureAndOcr} disabled={isOcrProcessing} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs">
+                      <span>🔍</span><span>{t.scanLabel || "Scan Label"}</span>
+                    </button>
+                    <button type="button" onClick={stopCamera} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer">
+                      <span>⏹️</span><span>{t.stopCamera || "Stop Camera"}</span>
+                    </button>
+                  </>
+                )}
+
+                <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer border border-slate-200">
+                  <span>📁</span><span>{t.uploadLabelImage || "Upload Photo"}</span>
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-start gap-1.5">
+                <span className="text-blue-600 font-bold">💡</span><span>{ocrMessage}</span>
+              </p>
+
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <span className="text-[11px] font-bold text-slate-500 block mb-1.5 uppercase tracking-wider">Test Scan Samples (1-Click Demo):</span>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => handleQuickSampleScan('Amul Taaza Milk 500ml', '2026-09-10', '2026-09-15', 'Dairy', 26, 30)} className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs border border-blue-200 transition cursor-pointer">🥛 Scan Amul Milk</button>
+                  <button type="button" onClick={() => handleQuickSampleScan('Britannia Brown Bread', '2026-09-11', '2026-09-16', 'Bakery', 35, 45)} className="px-2.5 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs border border-amber-200 transition cursor-pointer">🍞 Scan Bread Pack</button>
+                  <button type="button" onClick={() => handleQuickSampleScan('Nestle Curd Dahi 400g', '2026-09-09', '2026-09-17', 'Dairy', 38, 45)} className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold text-xs border border-emerald-200 transition cursor-pointer">🥣 Scan Dahi Tub</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <div className="flex justify-between items-center mb-1">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <span>➕</span><span>{t.addOrInwardStock}</span>
+              </h2>
+              <div className="flex items-center gap-1.5">
+                {scannedBadge && <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">⚡ Scanned Data</span>}
+                {existing && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-200">Existing Item</span>}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">{t.addStockSub}</p>
+
+            <form onSubmit={handleSave} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.productName} *</label>
+                <input
+                  type="text"
+                  list="allProds"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    const f = products.find(p => p.name.trim().toLowerCase() === e.target.value.trim().toLowerCase());
+                    if (f) {
+                      setCategory(f.category);
+                      if (!buyingPrice) setBuyingPrice(String(f.buyingPrice));
+                      if (!sellingPrice) setSellingPrice(String(f.sellingPrice));
+                    }
+                  }}
+                  placeholder="e.g. Amul Milk 500ml"
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <datalist id="allProds">
+                  {products.map(p => <option key={p.id} value={p.name} />)}
+                </datalist>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t.mfgDate} *</label>
+                  <input type="date" value={mfgDate} onChange={(e) => setMfgDate(e.target.value)} required className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t.expiryDate} *</label>
+                  <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold focus:border-blue-500 focus:outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.category}</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-blue-500 focus:outline-none bg-white">
+                  <option value="Dairy">{t.catDairy}</option>
+                  <option value="Bakery">{t.catBakery}</option>
+                  <option value="Beverages">{t.catBeverages}</option>
+                  <option value="Produce">{t.catProduce}</option>
+                  <option value="Grocery">{t.catGrocery}</option>
+                  <option value="Personal Care">{t.catPersonalCare}</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">{t.buyingPriceLabel} {!existing && '*'}</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                    <input type="number" step="0.01" min="0.01" value={buyingPrice} onChange={(e) => setBuyingPrice(e.target.value)} placeholder="Cost" required={!existing} className="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 text-sm font-medium focus:border-blue-500 focus:outline-none bg-white" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-blue-900 mb-1 flex justify-between">
+                    <span>{t.sellingPriceNewItem} {!existing && '*'}</span>
+                    <span className="text-[10px] text-blue-600 font-bold uppercase">Autofills Sale</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 font-bold">₹</span>
+                    <input type="number" step="0.01" min="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} placeholder="Retail" required={!existing} className="w-full pl-7 pr-3 py-2 rounded-lg border border-blue-300 text-sm font-bold focus:border-blue-500 focus:outline-none bg-white" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.qtyToInward} *</label>
+                <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-bold focus:border-blue-500 focus:outline-none" />
+              </div>
+
+              {notice && (
+                <div className={`p-2.5 rounded-lg text-xs font-semibold ${notice.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+                  {notice.text}
+                </div>
+              )}
+
+              <button type="submit" className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition cursor-pointer">
+                {t.updateStockBtn}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW C: MANAGE STOCK TABLE
+    function ManageStockView({ products, t }) {
+      const [search, setSearch] = useState('');
+      const filtered = products.filter(p =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.category || '').toLowerCase().includes(search.toLowerCase())
+      );
+
+      return (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">{t.manageStockHeading}</h2>
+              <p className="text-xs text-slate-500">{t.manageStockSub}</p>
+            </div>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t.searchStockPlaceholder}
+              className="px-3 py-2 rounded-lg border border-slate-300 text-xs w-full sm:w-64 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-slate-50 border-y text-slate-500 uppercase">
+                  <th className="py-2.5 px-3 font-semibold">Product</th>
+                  <th className="py-2.5 px-3 font-semibold">Category</th>
+                  <th className="py-2.5 px-3 font-semibold text-center">Quantity</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Buying (₹)</th>
+                  <th className="py-2.5 px-3 font-semibold text-right text-blue-900">Selling (₹)</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Margin</th>
+                  <th className="py-2.5 px-3 font-semibold text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={7} className="py-6 text-center text-slate-400">{t.noMatchingStock}</td></tr>
+                ) : (
+                  filtered.map(item => {
+                    const qty = Number(item.quantity) || 0;
+                    const status = qty <= 0 ? 'out' : qty <= 5 ? 'low' : 'ok';
+                    const margin = (item.sellingPrice || 0) - (item.buyingPrice || 0);
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-bold text-slate-900">{item.name}</td>
+                        <td className="py-2.5 px-3 text-slate-600">{item.category}</td>
+                        <td className="py-2.5 px-3 text-center font-bold">{qty}</td>
+                        <td className="py-2.5 px-3 text-right">₹{Number(item.buyingPrice || 0).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-blue-700 bg-blue-50/30">₹{Number(item.sellingPrice || 0).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-emerald-700">+₹{margin.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          {status === 'out' && <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">{t.outOfStockStatus}</span>}
+                          {status === 'low' && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">{t.lowStockStatus}</span>}
+                          {status === 'ok' && <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">{t.inStockStatus}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW D: SUPPLIERS VIEW
+    function SuppliersView({ suppliers, onAddSupplier, onDeleteSupplier, t }) {
+      const [agency, setAgency] = useState('');
+      const [contact, setContact] = useState('');
+      const [category, setCategory] = useState('Dairy');
+      const [items, setItems] = useState('');
+
+      const handleAdd = (e) => {
+        e.preventDefault();
+        if (!agency.trim() || !contact.trim()) return;
+        onAddSupplier({ agency: agency.trim(), contact: contact.trim(), category, items: items.trim() });
+        setAgency(''); setContact(''); setItems('');
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 mb-3">{t.logInwardDelivery}</h2>
+            <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.agencyName} *</label>
+                <input type="text" value={agency} onChange={e => setAgency(e.target.value)} required className="w-full px-3 py-2 rounded-lg border text-xs focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.contactNumber} *</label>
+                <input type="text" value={contact} onChange={e => setContact(e.target.value)} required className="w-full px-3 py-2 rounded-lg border text-xs focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.category}</label>
+                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-xs bg-white">
+                  <option value="Dairy">Dairy</option>
+                  <option value="Bakery">Bakery</option>
+                  <option value="Beverages">Beverages</option>
+                  <option value="Produce">Produce</option>
+                  <option value="Grocery">Grocery</option>
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.itemsSupplied} *</label>
+                <input type="text" value={items} onChange={e => setItems(e.target.value)} placeholder={t.itemsSuppliedPlaceholder} required className="w-full px-3 py-2 rounded-lg border text-xs focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="sm:col-span-1">
+                <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700">{t.saveDeliveryBtn}</button>
+              </div>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 mb-3">{t.agencyDeliveriesLog}</h2>
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-slate-50 border-y text-slate-500 uppercase">
+                  <th className="py-2.5 px-3">Agency</th>
+                  <th className="py-2.5 px-3">Contact</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3">Items</th>
+                  <th className="py-2.5 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {suppliers.length === 0 ? (
+                  <tr><td colSpan={5} className="py-6 text-center text-slate-400">{t.noDeliveriesYet}</td></tr>
+                ) : (
+                  suppliers.map(s => (
+                    <tr key={s.id}>
+                      <td className="py-2.5 px-3 font-bold">{s.agency}</td>
+                      <td className="py-2.5 px-3 font-mono">{s.contact}</td>
+                      <td className="py-2.5 px-3">{s.category}</td>
+                      <td className="py-2.5 px-3">{s.items}</td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button onClick={() => onDeleteSupplier(s.id)} className="text-rose-600 hover:underline font-bold cursor-pointer">{t.deleteBtn}</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW E: EXPIRING BATCHES VIEW
+    function ExpiringView({ products, onMarkCheck, t }) {
+      const todayTime = new Date().setHours(0, 0, 0, 0);
+      const list = products
+        .map(p => {
+          const exp = new Date(p.expiryDate).getTime();
+          const days = isNaN(exp) ? 999 : Math.ceil((exp - todayTime) / (1000 * 60 * 60 * 24));
+          return { ...p, days };
+        })
+        .filter(p => p.days <= 10)
+        .sort((a, b) => a.days - b.days);
+
+      return (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+          <div className="flex justify-between items-center mb-1">
+            <h2 className="text-lg font-bold text-slate-900">{t.expiryManagementHeading}</h2>
+            <span className="text-xs bg-amber-50 text-amber-800 px-2 py-0.5 rounded font-bold">{list.length} Perishable Batches</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">{t.expiryManagementSub}</p>
+
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="bg-slate-50 border-y text-slate-500 uppercase">
+                <th className="py-2.5 px-3">Product</th>
+                <th className="py-2.5 px-3">Batch</th>
+                <th className="py-2.5 px-3">Expiry Date</th>
+                <th className="py-2.5 px-3">Time Remaining</th>
+                <th className="py-2.5 px-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {list.length === 0 ? (
+                <tr><td colSpan={5} className="py-6 text-center text-slate-400">{t.noExpiringProducts}</td></tr>
+              ) : (
+                list.map(item => (
+                  <tr key={item.id}>
+                    <td className="py-2.5 px-3 font-bold">{item.name}</td>
+                    <td className="py-2.5 px-3 font-mono">{item.batch}</td>
+                    <td className="py-2.5 px-3">{item.expiryDate}</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${item.days <= 2 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {item.days < 0 ? t.expired : `${item.days} ${t.daysLeft}`}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      {item.checked ? (
+                        <span className="text-emerald-700 font-bold">{t.checkedBadge}</span>
+                      ) : (
+                        <button onClick={() => onMarkCheck(item.id)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold border border-blue-200 hover:bg-blue-100 cursor-pointer">
+                          {t.markCheckBtn}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // VIEW F: REPORTS & PROFIT/LOSS
+    function ReportsView({ sales, t }) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const monthStr = todayStr.slice(0, 7);
+      const todaySales = sales.filter(s => s.date === todayStr);
+      const monthSales = sales.filter(s => s.date.startsWith(monthStr));
+
+      const todayRev = todaySales.reduce((acc, s) => acc + s.selling * s.quantity, 0);
+      const todayProf = todaySales.reduce((acc, s) => acc + s.profit, 0);
+      const monthRev = monthSales.reduce((acc, s) => acc + s.selling * s.quantity, 0);
+      const monthProf = monthSales.reduce((acc, s) => acc + s.profit, 0);
+
+      return (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.todayRevenue}</span>
+              <strong className="text-xl font-bold text-slate-900 block mt-1">₹{todayRev.toFixed(2)}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.todayProfit}</span>
+              <strong className="text-xl font-bold text-emerald-600 block mt-1">₹{todayProf.toFixed(2)}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.monthlyRevenue}</span>
+              <strong className="text-xl font-bold text-slate-900 block mt-1">₹{monthRev.toFixed(2)}</strong>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-semibold text-slate-500 uppercase">{t.monthlyProfit}</span>
+              <strong className="text-xl font-bold text-emerald-600 block mt-1">₹{monthProf.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 mb-1">{t.salesProfitHistory}</h2>
+            <p className="text-xs text-slate-500 mb-4">{t.salesHistorySub}</p>
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-slate-50 border-y text-slate-500 uppercase">
+                  <th className="py-2.5 px-3">Product</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3 text-right">Buying</th>
+                  <th className="py-2.5 px-3 text-right">Selling</th>
+                  <th className="py-2.5 px-3 text-center">Qty</th>
+                  <th className="py-2.5 px-3 text-right">Profit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sales.length === 0 ? (
+                  <tr><td colSpan={6} className="py-6 text-center text-slate-400">{t.noSalesRecorded}</td></tr>
+                ) : (
+                  sales.map(s => (
+                    <tr key={s.id}>
+                      <td className="py-2.5 px-3 font-bold">{s.product}</td>
+                      <td className="py-2.5 px-3 text-slate-400 font-mono">{s.date}</td>
+                      <td className="py-2.5 px-3 text-right">₹{s.buying.toFixed(2)}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-blue-700">₹{s.selling.toFixed(2)}</td>
+                      <td className="py-2.5 px-3 text-center font-bold">{s.quantity}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">+₹{s.profit.toFixed(2)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW G: SETTINGS
+    function SettingsView({ settings, onSaveSettings, language, onSelectLanguage, t }) {
+      const [owner, setOwner] = useState(settings.ownerName);
+      const [store, setStore] = useState(settings.storeName);
+      const [notice, setNotice] = useState(null);
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        onSaveSettings({ ownerName: owner.trim(), storeName: store.trim() });
+        setNotice(t.settingsSavedNotice);
+        setTimeout(() => setNotice(null), 4000);
+      };
+
+      return (
+        <div className="max-w-xl mx-auto space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 mb-1">{t.storeProfileSettings}</h2>
+            <form onSubmit={handleSave} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.storeAdminLabel}</label>
+                <input type="text" value={owner} onChange={e => setOwner(e.target.value)} required className="w-full px-3 py-2 rounded-lg border text-sm focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t.storeNameLabel}</label>
+                <input type="text" value={store} onChange={e => setStore(e.target.value)} required className="w-full px-3 py-2 rounded-lg border text-sm focus:border-blue-500 focus:outline-none" />
+              </div>
+              {notice && <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-semibold">{notice}</div>}
+              <button type="submit" className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 cursor-pointer">{t.saveProfileBtn}</button>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+            <h3 className="text-sm font-bold text-slate-900 mb-2">{t.langSelectLabel}</h3>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { code: 'en', title: 'English', sub: 'Standard' },
+                { code: 'mr', title: 'मराठी', sub: 'Marathi' },
+                { code: 'hi', title: 'हिन्दी', sub: 'Hindi' }
+              ].map(item => (
+                <button
+                  key={item.code}
+                  onClick={() => onSelectLanguage(item.code)}
+                  className={`p-3 rounded-lg border text-center transition cursor-pointer ${language === item.code ? 'border-blue-600 bg-blue-50/70 text-blue-800 font-bold' : 'border-slate-200 text-slate-700'}`}
+                >
+                  <div className="text-sm font-bold">{item.title}</div>
+                  <div className="text-[10px] text-slate-500">{item.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW H: AI CHATBOT
+    function ChatbotView({ isOpen, onClose, language, products, sales, t }) {
+      const getInitial = () => ({
+        id: 'w-1',
+        sender: 'bot',
+        text: t.botWelcome,
+        followUps: language === 'mr' ? [
+          "डॅशबोर्डवर विक्री किंमत कशी आपोआप भरली जाते?",
+          "नफा आणि तोटा (Profit & Loss) कसा मोजला जातो?",
+          "मुदत संपणे (Expiry) अलर्ट आणि मार्क चेक काय आहे?"
+        ] : language === 'hi' ? [
+          "डैशबोर्ड पर बिक्री मूल्य (Selling Price) अपने आप कैसे भरता है?",
+          "दैनिक लाभ (Profit) कैसे गिना जाता है?",
+          "एक्सपायरी अलर्ट और मार्क चेक कैसे काम करता है?"
+        ] : [
+          "How does the selling price autofill on the dashboard?",
+          "How is net profit calculated for each sale?",
+          "How do expiry alerts and mark-check work?"
+        ]
+      });
+
+      const [messages, setMessages] = useState([getInitial()]);
+      const [input, setInput] = useState('');
+      const [loading, setLoading] = useState(false);
+      const scrollRef = useRef(null);
+
+      useEffect(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      const handleSend = async (userText) => {
+        const text = userText.trim();
+        if (!text || loading) return;
+
+        setMessages(prev => [...prev, { id: 'm-' + Date.now(), sender: 'user', text }]);
+        setInput('');
+        setLoading(true);
+
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text, language })
+          });
+          const data = await res.json();
+          setMessages(prev => [...prev, {
+            id: 'b-' + Date.now(),
+            sender: 'bot',
+            text: data.reply,
+            followUps: data.followUps || []
+          }]);
+        } catch (e) {
+          // Offline fallback response
+          setMessages(prev => [...prev, {
+            id: 'b-' + Date.now(),
+            sender: 'bot',
+            text: "🎯 **Selling Price Autofill & Profit Tracking:**\nWhen stock is added with a Selling Price (₹), selecting it on the Dashboard automatically autofills the selling price for instant margin computation!\n\nYou can also ask about expiry alerts, stock management, or reports.",
+            followUps: ["How do I add a new product?", "How does expiry management work?"]
+          }]);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-end p-0 sm:p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white w-full sm:max-w-md h-full sm:h-[600px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            <div className="p-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-sm leading-tight flex items-center gap-1.5">
+                  <span>✨</span><span>{t.botTitle}</span>
+                  <span className="text-[10px] bg-white/20 px-1 rounded uppercase">{language}</span>
+                </h3>
+                <p className="text-[11px] text-blue-100">{t.botSubtitle}</p>
+              </div>
+              <button onClick={onClose} className="text-white hover:bg-white/10 p-1.5 rounded-lg text-sm cursor-pointer">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+              {messages.map(m => (
+                <div key={m.id} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className={`p-3 rounded-xl text-xs max-w-[85%] whitespace-pre-wrap ${m.sender === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none shadow-xs'}`}>
+                    {m.text}
+                  </div>
+                  {m.followUps && m.followUps.length > 0 && (
+                    <div className="mt-2 space-y-1 w-full max-w-[85%]">
+                      <span className="text-[10px] font-bold text-slate-400 block">{t.followUpPrompt}</span>
+                      {m.followUps.map((q, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSend(q)}
+                          className="w-full text-left text-xs bg-white hover:bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-200 shadow-2xs transition block cursor-pointer"
+                        >
+                          {q} →
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {loading && <div className="text-xs text-slate-400 italic">{t.thinking}</div>}
+              <div ref={scrollRef} />
+            </div>
+
+            <div className="p-3 bg-white border-t border-slate-200">
+              <form onSubmit={e => { e.preventDefault(); handleSend(input); }} className="flex gap-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  placeholder={t.botPlaceholder}
+                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:border-blue-500 focus:outline-none"
+                />
+                <button type="submit" className="px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 cursor-pointer">
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- 5. MOUNT APPLICATION ---
+    ReactDOM.createRoot(document.getElementById('root')).render(<Perfect360App />);
+  </script>
+</body>
+</html>
